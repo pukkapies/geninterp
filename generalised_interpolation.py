@@ -1,7 +1,9 @@
 __author__ = 'Kevin Webster'
 
-from kernel import *
+from geninterp.kernel import *
 from scipy.spatial import distance
+import scipy.sparse as sparse
+from scipy.sparse.linalg.dsolve import spsolve
 
 # For printing out numpy arrays without line breaks
 np.set_printoptions(linewidth=np.nan)
@@ -25,7 +27,7 @@ class Data(object):
     def set_data(self, pts):
         """
         Stores sets of data points in self.points and checks the format
-        :param pts: A set of points. Must be 2D np.array with points stacked in rows
+        :param pts: A set of points. Must be 2D np.array with points stacked along rows
         :return: None
         """
         assert isinstance(pts, np.ndarray)
@@ -132,7 +134,7 @@ class LinearFunctional(object):
 
 class Interpolant(object):
 
-    def __init__(self, linearfunctional, data_list):
+    def __init__(self, linearfunctional, data_list, K):
         """
         Initialiser for orbital derivative interpolant
         :param linearfunctional: LinearFunctional object. Number of basis functions should be the same as
@@ -181,10 +183,20 @@ class Interpolant(object):
             print("ERROR: Incompatible lengths of Interpolant.data_points and Interpolant.basis.functionals")
             exit(1)
         self.linfunc = linearfunctional # LinearFunctional object - functions used in expansion terms
+        assert isinstance(K, Kernel)
+        self.K = K
+        self.K.dim = self.dim
         self.gram = None    # Interpolation (Gramian) matrix to be constructed from linearfunctional
         self.beta = np.array([]) # 1D np.array to contain target values contained in data_list
 
-    def solve_linear_system(self):
+    def solve_linear_system(self, A=None, use_Wendland_compsupp=False):
+        """
+        Solves the linear system defined by generalised interpolation problem
+        :param A: Interpolation matrix
+        :param use_Wendland_compsupp: When A is not given and the kernel is Wendland kernel, use the
+        compact support to speed up population of interpolation matrix.
+        :return: solution vector stored in self.coefficients
+        """
         # Check the Data list is not empty
         data_empty = True
         for data_object in self.data_points:
@@ -192,14 +204,23 @@ class Interpolant(object):
         if data_empty == True:
             print("ERROR: Cannot solve linear system - no data points")
             exit(1)
-        print('making Gram matrix')
-        self._gram()
-        print('finished making Gram matrix')
+        if A==None:
+            print('making Gram matrix')
+            if use_Wendland_compsupp==False:
+                self._gram()
+            else:
+                self._gram_Wendland()
+            print('finished making Gram matrix')
+        else:
+            self.gram = A
         print('solving linear system')
         for data_object in self.data_points:
             #self.dim = data_object.points.shape[0]
             self.beta = np.hstack((self.beta, data_object.targets))
-        self.coefficients = np.linalg.solve(self.gram, self.beta)
+        if isinstance(self.gram, sparse.csr.csr_matrix):
+            self.coefficients = spsolve(self.gram, self.beta)
+        else:
+            self.coefficients = np.linalg.solve(self.gram, self.beta)
         print('finished linear system')
 
     def eval(self, y):
@@ -260,12 +281,68 @@ class Interpolant(object):
             self.data_points.pop(index)
             self.linfunc.remove_basis_function_index(index) # Also removes Gram function
 
+    def _gram_Wendland(self):
+        """
+        Creates the Gram matrix from the self.linfunc and self.data_points attributes
+        Checks if any of the Data objects are empty, if so removes them from the matrix
+        and data_points and linfunc attributes
+        Uses compact support of Wendland function, no vectorisation
+        :return: Gram matrix
+        """
+        self._check_for_empty_Data()
+        # Use compact support to speed up Gram matrix population
+        len_temp = len(self.linfunc.gram_functions) # Number of rows/column blocks in Gram matrix
+
+        # Using a for loop over the off-diagonal blocks of the Gram matrix, using the symmetry of the matrix
+        # Then calculate the diagonal blocks, again using symmetry
+        list_of_rows = []
+        if len_temp > 0:
+            for i in range(len_temp):
+                row = []
+                for j in range(len_temp):
+                    if j == i:
+                        row.append(np.array([0])) # Dummy value, to be replaced in next loop
+                    elif j < i:
+                        row.append(list_of_rows[j][i].T)
+                    else:
+                        num_points_in_dataobj_i = self.data_points[i].numpoints
+                        num_points_in_dataobj_j = self.data_points[j].numpoints
+                        i_pts = self.data_points[i].points
+                        j_pts = self.data_points[j].points
+                        off_diag_block = np.zeros((num_points_in_dataobj_i, num_points_in_dataobj_j))
+                        for k in range(num_points_in_dataobj_i):
+                            for l in range(num_points_in_dataobj_j):
+                                if self.K.c * np.linalg.norm(i_pts[k,:] - j_pts[l,:]) >= 1:
+                                    off_diag_block[k,l] = 0
+                                else:
+                                    off_diag_block[k,l] = self.linfunc.gram_functions[i][j](i_pts[k,:], j_pts[l,:])
+                        row.append(off_diag_block)
+
+                list_of_rows.append(row)
+        # Now calculate the diagonal blocks
+        for i in range(len_temp):
+            pts = self.data_points[i].points
+            num_points_in_dataobj = self.data_points[i].numpoints
+            print('number of data points = ', num_points_in_dataobj)
+            diag_block = np.zeros((num_points_in_dataobj,num_points_in_dataobj))
+            for j in range(num_points_in_dataobj):
+                print('j = ', j)
+                for k in range(num_points_in_dataobj):
+                    if k < j:
+                        diag_block[j,k] = diag_block[k,j]
+                    elif self.K.c * np.linalg.norm(pts[j,:] - pts[k,:]) >= 1:
+                        diag_block[j,k] = 0
+                    else:
+                        diag_block[j,k] = self.linfunc.gram_functions[i][i](pts[j,:], pts[k,:])
+            list_of_rows[i][i] = diag_block
+        self.gram = np.vstack([np.hstack(list) for list in list_of_rows])
 
     def _gram(self):
         """
         Creates the Gram matrix from the self.linfunc and self.data_points attributes
         Checks if any of the Data objects are empty, if so removes them from the matrix
         and data_points and linfunc attributes
+        Uses vectorised cdist function
         :return: Gram matrix
         """
 
@@ -406,57 +483,7 @@ class OrbDerivInterpolant(Interpolant):
     def _gram(self):
 
         if isinstance(self.K, Wendland):
-            self._check_for_empty_Data()
-            # Use compact support to speed up Gram matrix population
-            len_temp = len(self.linfunc.gram_functions) # Number of rows/column blocks in Gram matrix
-
-            # Using a for loop over the off-diagonal blocks of the Gram matrix, using the symmetry of the matrix
-            # Then calculate the diagonal blocks, again using symmetry
-            list_of_rows = []
-            for i in range(len_temp):
-                row = []
-                for j in range(len_temp):
-                    if j == i:
-                        row.append(np.array([0])) # Dummy value, to be replaced in next loop
-                    elif j < i:
-                        row.append(list_of_rows[j][i].T)
-                    else:
-                        num_points_in_dataobj_i = self.data_points[i].numpoints
-                        num_points_in_dataobj_j = self.data_points[j].numpoints
-                        i_pts = self.data_points[i].points
-                        j_pts = self.data_points[j].points
-                        off_diag_block = np.zeros((num_points_in_dataobj_i, num_points_in_dataobj_j))
-                        for k in range(num_points_in_dataobj_i):
-                            for l in range(num_points_in_dataobj_j):
-                                if self.K.c * np.linalg.norm(i_pts[k,:] - j_pts[l,:]) >= 1:
-                                    off_diag_block[k,l] = 0
-                                else:
-                                    off_diag_block[k,l] = self.linfunc.gram_functions[i][j](i_pts[k,:], j_pts[l,:])
-                        row.append(off_diag_block)
-
-
-
-
-
-                        #row.append(distance.cdist(self.data_points[i].points,
-                        #                          self.data_points[j].points,
-                        #                          self.linfunc.gram_functions[i][j]))
-                list_of_rows.append(row)
-            # Now calculate the diagonal blocks
-            for i in range(len_temp):
-                pts = self.data_points[i].points
-                num_points_in_dataobj = self.data_points[i].numpoints
-                diag_block = np.zeros((num_points_in_dataobj,num_points_in_dataobj))
-                for j in range(num_points_in_dataobj):
-                    for k in range(num_points_in_dataobj):
-                        if k < j:
-                            diag_block[j,k] = diag_block[k,j]
-                        elif self.K.c * np.linalg.norm(pts[j,:] - pts[k,:]) >= 1:
-                            diag_block[j,k] = 0
-                        else:
-                            diag_block[j,k] = self.linfunc.gram_functions[i][i](pts[j,:], pts[k,:])
-                list_of_rows[i][i] = diag_block
-            self.gram = np.vstack([np.hstack(list) for list in list_of_rows])
+            return super()._gram_Wendland()
 
         else:
             return super()._gram()

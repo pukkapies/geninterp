@@ -4,7 +4,7 @@ __author__ = 'Kevin Webster'
 import copy
 import math
 import numpy as np
-import factors as factors_module
+import geninterp.factors as factors_module
 
 # def name_of_object(arg):
 #     # check __name__ attribute (functions)

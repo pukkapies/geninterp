@@ -1,6 +1,6 @@
 __author__ = 'Kevin Webster'
 
-from polynomial import *
+from geninterp.polynomial import *
 
 """
 Module provides standard Kernel functions for analysis
