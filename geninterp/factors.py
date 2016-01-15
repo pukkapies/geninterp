@@ -260,13 +260,11 @@ def prod_sum_divide(list_of_lists, divisorlist):
         appended_lists = []  # Extra lists to add to lol_copy
         single_remainders = 0  # Take care of remainders for this divisor
         for sublist in lol_copy:
-            #print('sublist = ', sublist)
             if divisor in sublist:
                 if len(sublist) > 1:
                     sublist.remove(divisor)
                 else:
                     sublist[0] = 1
-                #print('divisor in sublist, now sublist = ', sublist)
             elif len(sublist) == 0:
                 continue
             elif sublist[-1] < 0:
@@ -282,7 +280,6 @@ def prod_sum_divide(list_of_lists, divisorlist):
                         appended_lists.append(list(sublist))
                     sublist.pop()
                     sublist[-1] *= rem
-                    #print('sublist = ', sublist, 'appended-list = ', appended_lists)
                 # Now sublist has length 1
                 if sublist[0] <  0:
                     if (-sublist[0] // divisor) != 0:
@@ -293,18 +290,13 @@ def prod_sum_divide(list_of_lists, divisorlist):
                     single_remainders -= -sublist[0] % divisor
                 else:
                     single_remainders += sublist[0] % divisor
-                #print('single_remainders = ', single_remainders)
                 sublist.pop()
-                #print('appended_lists = ', appended_lists)
-                #print('sublist = ', sublist)
         lol_copy.extend(appended_lists)
         assert not single_remainders % divisor
         if single_remainders:
             lol_copy.append([single_remainders // divisor])
-        #print('lol_copy = ', lol_copy)
 
         # Clean up - remove any empty lists, single digit lists and 1's from lists
-        #print('lol_copy = ', lol_copy)
         for ind1 in range(len(lol_copy)):
             if len(lol_copy[ind1]) == 0:
                 continue
@@ -322,7 +314,6 @@ def prod_sum_divide(list_of_lists, divisorlist):
             elif any_one == 1:
                 for ind in reversed(one_indices):
                     lol_copy[ind1].pop(ind)
-        #print('Cleanup: after ones removal - lol_copy = ', lol_copy)
         remove_indices = []
         single_digits = 0
         for ind in range(len(lol_copy)):
@@ -343,7 +334,6 @@ def prod_sum_divide(list_of_lists, divisorlist):
                     lol_copy.append([-1] + prime_factors(-single_digits))
             else:
                 lol_copy.append(prime_factors(single_digits))
-        #print('Cleanup: after empty list removal and single digit collecting - lol_copy = ', lol_copy)
     return lol_copy
 
 

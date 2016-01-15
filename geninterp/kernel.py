@@ -1,6 +1,6 @@
 __author__ = 'Kevin Webster'
 
-from geninterp.polynomial import *
+from .polynomial import *
 
 """
 Module provides standard Kernel functions for analysis
@@ -42,6 +42,7 @@ class Kernel(object):
 
 
 class Polynomial(Kernel):
+    #TODO: Implement Polynomial kernel
     pass
 
 
@@ -90,15 +91,6 @@ class Gaussian(RBF):
         dim_axis = max(x1.ndim, x2.ndim) - 1
         return np.exp(-(np.linalg.norm((x1 - x2) ** 2, axis=dim_axis) / self.var))
 
-    # def dx_eval(self, x1, x2):
-    #     """
-    #     Function evaluation for derivative with respect to one variable
-    #     :param x1, x2: 2D np.arrays containing points to input to Gaussian kernel function
-    #     :return: Length d vector of derivative Gaussian kernel evaluations
-    #     """
-    #     assert x1.ndim == 1 and x2.ndim == 1
-    #     assert len(x1) == self.dim and len(x2) == self.dim
-    #     return -2 * self.eval(x1, x2) * (x1 - x2) / self.var
 
     def psi1(self, x1, x2):
         """
@@ -221,7 +213,6 @@ class Wendland(RBF):
         temp_poly = copy.deepcopy(self.psilist[0])
         temp_poly.differentiate()
         psi1_addends.append([temp_poly, self.psilist[1], self.psilist[2]])
-        #print('psi1_addends = ', psi1_addends)
         d_dr_psi = factorise(*psi1_addends)
         # d_dr_psi should be divisible by r
         if 0 in d_dr_psi[0].dict:
@@ -233,17 +224,14 @@ class Wendland(RBF):
             d_dr_psi[0].dict[i] = d_dr_psi[0].dict[i + 1]
         del d_dr_psi[0].dict[d_dr_psi[0].degree]
         d_dr_psi[0].degree -= 1
-        #print('After dividing by r, d_dr_psi = ', d_dr_psi)
         self.psi1list = d_dr_psi
 
         self.psi1poly = poly_triple_to_poly(self.psi1list)
-        #print('psi1poly = ', self.psi1poly)
 
         psi1poly_scaled = copy.deepcopy(self.psi1poly)
         for ind in psi1poly_scaled.dict:
             psi1poly_scaled.dict[ind] *= self.c**(ind + 2)
 
-        #print('psi1poly_scaled = ', psi1poly_scaled)
 
         def psi1eval(x1, x2):
             assert self.k >= 1  # Otherwise psi1 and psi2 are not defined
@@ -266,19 +254,14 @@ class Wendland(RBF):
         :param x2: input vector, 1D numpy array
         :return: (d(psi1)/dr) / r
         """
-        #print('Calculating psi2. psi1list = ', self.psi1list)
         psi2_addends = []
         psi2_addends.append([-self.psi1list[1] * self.psi1list[0], self.psi1list[1] - 1, self.psi1list[2]])
         temp_poly = copy.deepcopy(self.psi1list[0])
-        #print('temp_poly = ', temp_poly)
         temp_poly.differentiate()
-        #print('temp_poly = ', temp_poly)
         if not (temp_poly.degree == 0 and temp_poly.dict[0] == 0): # Zero polynomial
             psi2_addends.append([temp_poly, self.psi1list[1], self.psi1list[2]])
-        #print('psi2_addends = ', psi2_addends)
         d_dr_psi1 = factorise(*psi2_addends)
         self.psi2list = d_dr_psi1
-        #print('psi2list = ', self.psi2list)
 
         divisor = list_product(d_dr_psi1[2])
         d_dr_psi1 = poly_triple_to_poly([d_dr_psi1[0],d_dr_psi1[1],[]])
@@ -293,16 +276,12 @@ class Wendland(RBF):
                 d_dr_psi1.dict[i] = d_dr_psi1.dict[i+1]
                 del d_dr_psi1.dict[i+1]
         d_dr_psi1.degree -= 1
-        #print('After dividing by r, d_dr_psi1 = ', d_dr_psi1, '+', constant_coeff,'/r, divided by', divisor)
         self.psi2poly = [(1/divisor) * d_dr_psi1, (1/divisor) * constant_coeff]
-        #print('psi2poly = ', self.psi2poly)
 
         psi2poly_scaled = copy.deepcopy(self.psi2poly)
         for ind in psi2poly_scaled[0].dict:
             psi2poly_scaled[0].dict[ind] *= self.c**(ind + 4)
         psi2poly_scaled[1] *= (self.c)**3
-
-        #print('psi1poly_scaled = ', psi2poly_scaled)
 
         def psi2eval(x1, x2):
             assert self.k >= 1  # Otherwise psi1 and psi2 are not defined

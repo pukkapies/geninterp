@@ -1,23 +1,10 @@
 __author__ = 'Kevin Webster'
 # This module is written to help in the implementation of the Wendland function kernel
 
-import copy
 import math
 import numpy as np
-import geninterp.factors as factors_module
+from .factors import *
 
-# def name_of_object(arg):
-#     # check __name__ attribute (functions)
-#     try:
-#         return arg.__name__
-#     except AttributeError:
-#         pass
-#
-#     for name, value in globals().items():
-#         if value is arg and not name.startswith('_'):
-#             return name
-
-#TODO: Change coefficients to numpy 'int64' type to help avoid scalar overflow errors
 
 class Poly:
     """
@@ -174,72 +161,6 @@ print(poly.dict)
 """
 
 
-# def add_poly(poly1, poly2):     # Redundant function with operator overloading
-#     """
-#     Adds two polynomials of class Poly
-#     :param poly1: Poly object
-#     :param poly2: Poly object
-#     :return: Poly object that is the sum of poly1 and poly2
-#     """
-#     assert isinstance(poly2, Poly)
-#     assert isinstance(poly1, Poly)
-#     poly1.verify()
-#     poly2.verify()
-#     sum_poly = Poly(max(poly1.degree, poly2.degree))
-#     for index in range(sum_poly.degree + 1):
-#         if index not in poly1.dict:
-#             poly1.dict[index] = 0
-#         if index not in poly2.dict:
-#             poly2.dict[index] = 0
-#         sum_poly.dict[index] = poly1.dict[index] + poly2.dict[index]
-#         if sum_poly.dict[index] == 0:
-#             del sum_poly.dict[index]
-#     sum_poly.degree = max(sum_poly.dict.keys())
-#     return sum_poly
-#
-#
-# def subtract_poly(poly1, poly2):      # Redundant function with operator overloading
-#     """
-#     Subtracts poly2 from poly1
-#     :param poly1: Poly object
-#     :param poly2: Poly object
-#     :return: Poly object that is poly1 - poly2
-#     """
-#     assert isinstance(poly2, Poly)
-#     assert isinstance(poly1, Poly)
-#     poly1.verify()
-#     poly2.verify()
-#     diff_poly = Poly(max(poly1.degree, poly2.degree))
-#     for index in range(diff_poly.degree + 1):
-#         if index not in poly1.dict:
-#             poly1.dict[index] = 0
-#         if index not in poly2.dict:
-#             poly2.dict[index] = 0
-#         diff_poly.dict[index] = poly1.dict[index] - poly2.dict[index]
-#         if diff_poly.dict[index] == 0:
-#             del diff_poly.dict[index]
-#     diff_poly.degree = max(diff_poly.dict.keys())
-#     return diff_poly
-#
-#
-# def scalar_mult(poly, scalar):      # Redundant function with operator overloading
-#     """
-#     Multiplies poly by a scalar
-#     :param poly: Poly object
-#     :param scalar: a scalar
-#     :return: Poly object that is scalar * poly
-#     """
-#     assert isinstance(poly, Poly)
-#     poly.verify()
-#     if scalar == 0:
-#         return Poly(0)
-#     else:
-#         mult_poly = copy.deepcopy(poly)
-#         for index in mult_poly.dict:
-#             mult_poly.dict[index] = scalar * poly.dict[index]
-#         return mult_poly
-
-
 def poly_monomial_mult(poly_mon, poly):
     """
     Multiplies a monomial by poly
@@ -263,30 +184,6 @@ def poly_monomial_mult(poly_mon, poly):
             del return_poly.dict[index]
         return_poly.degree += poly_mon.degree
     return return_poly
-
-#
-# def poly_mult(poly1, poly2):          # Redundant function with operator overloading
-#     """
-#     Multiplies poly1 by poly2
-#     :param poly1: Poly object
-#     :param poly2: Poly object
-#     :return: Poly object poly1 * poly2
-#     """
-#     assert isinstance(poly1, Poly)
-#     assert isinstance(poly2, Poly)
-#     poly1.verify()
-#     poly2.verify()
-#     return_poly = Poly(0)
-#     polylist = []
-#     for index in range(poly1.degree + 1):
-#         if index in poly1.dict:
-#             polymon_temp = Poly(index)
-#             polymon_temp.coeff(index, poly1.dict[index])
-#             polylist.append(poly_monomial_mult(polymon_temp, poly2))
-#     for i in range(len(polylist)):
-#         return_poly = add_poly(return_poly, polylist[i])
-#     return return_poly
-
 
 """
 # Example
@@ -476,7 +373,7 @@ def factorise(*args):
         arg[0].verify()
         poly_inputs.append(arg[0])
         degree_inputs.append(arg[1])
-        divisor_inputs.append(factors_module.prime_factors_list(arg[2]))
+        divisor_inputs.append(prime_factors_list(arg[2]))
     num_args = len(poly_inputs)
     factors = [[1]]*num_args  # To collect product factors of each polynomial
 
@@ -494,12 +391,12 @@ def factorise(*args):
             for item2 in divisor_input_copy:
                 if temp in item2:
                     item2.remove(temp)
-    lcm_divisors = factors_module.prime_factors_list(lcm_divisors)
+    lcm_divisors = prime_factors_list(lcm_divisors)
 
     # Collect polynomial inputs over a common divisor
     for i in range(num_args):
         #if len(nonintersect_elements(lcm_divisors, divisor_inputs[i])) != 0:
-        factors[i] = factors_module.prime_factors_list(nonintersect_elements(lcm_divisors, divisor_inputs[i]))
+        factors[i] = prime_factors_list(nonintersect_elements(lcm_divisors, divisor_inputs[i]))
         #poly_inputs[i] = scalar_mult(poly_inputs[i], np.prod(nonintersect_elements(lcm_divisors, divisor_inputs[i])))
         divisor_inputs[i] = lcm_divisors
 
@@ -507,7 +404,7 @@ def factorise(*args):
     # in the polynomial coefficients
     for i in range(num_args):
         poly_inputs[i] = poly_inputs[i] * polydeg_to_poly(degree_inputs[i] - min_degree)
-        temp = factors_module.prime_factors(factors_module.gcdd(*[poly_inputs[i].dict[ind] for ind in poly_inputs[i].dict]))
+        temp = prime_factors(gcdd(*[poly_inputs[i].dict[ind] for ind in poly_inputs[i].dict]))
         if len(temp) != 0:
             for index in poly_inputs[i].dict:
                 for t in temp:
@@ -531,78 +428,17 @@ def factorise(*args):
                 factors[j].remove(item)
     lcm_divisors = nonintersect_elements(lcm_divisors, HCF)
 
-    """
-    # There are likely to be more factors that cancel after adding polynomials together. Adding the polynomials
-    # together first can produce large coefficients, so calculate remainders of each polynomial coefficient
-    # to cancel additional factors before adding the polynomials
-    more_factors = []
-    # Calculate maximum degree of poly_inputs
-    max_degree = 0
-    for index in range(len(poly_inputs)):
-        if max_degree < max(poly_inputs[index].dict.keys()):
-            max_degree = max(poly_inputs[index].dict.keys())
-
-
-    #print('lcm_divisors = ', lcm_divisors)
-    #print('poly_inputs = ', poly_inputs)
-    #print('factors = ', factors)
-
-    lolol = []  # One sublist for each degree, each sublist is a list of list of factors/coeffs
-    for deg in range(max_degree + 1):
-        lolol.append([list(tuple([f for f in factors[i]]) + (poly_inputs[i].dict[deg],))
-                      for i in range(len(factors)) if deg in poly_inputs[i].dict])
-    #print('lolol = ', lolol)
-
-    remove_from_lcm_divisors = []
-    for l in lcm_divisors:
-        # Initialise a list of lists to collect which degrees have a factor l
-        degree_factors = []
-        for newlist in range(max_degree + 1):
-            degree_factors.append([])   # Sublists will be mutated - this avoids all sublists of degree_factors sharing the same reference
-        #print('l = ', l)
-        for deg in range(max_degree + 1):
-            lol = lolol[deg]
-            #print('lol = ', lol)
-            if factors_module.prod_sum_divisible(lol, l):
-                degree_factors[deg].append(l)
-            #print('degree_factors = ', degree_factors)
-        intersection = intersect_elements(degree_factors)
-        #print('intersection = ', intersection)
-        if len(intersection):
-            for deg in range(max_degree + 1):
-                #print('deg = ', deg)
-                lolol[deg] = factors_module.prod_sum_divide(lolol[deg], intersection)
-            remove_from_lcm_divisors.extend(intersection)
-            #print('cancelled common factor before adding, now lolol = ', lolol)
-    #print('finished going through lcm_divisors, lolol = ', lolol)
-    #print('remove_from_lcm_divisors = ', remove_from_lcm_divisors)
-    for i in remove_from_lcm_divisors:
-        lcm_divisors.remove(i)
-
-    # Now multiply polynomials by remaining factors and add together
-    output = [Poly(0), min_degree, lcm_divisors]
-    for deg in range(max_degree + 1):
-        p = Poly(deg)
-        p.coeff(deg, factors_module.prod_sum_eval(lolol[deg]))
-        output[0] = output[0] + p
-    #print('output = ', output)
-    #print('')
-    """
-
     output = [Poly(0), min_degree, lcm_divisors]
     for i in range(num_args):
         output[0] = output[0] + (poly_inputs[i] * list_product(factors[i]))
-    #print('output[0] = ', output[0])
 
     # Cancel any common factor
-    polysum_factor_list = factors_module.prime_factors(factors_module.gcdd(*[output[0].dict[index] for index in output[0].dict]))
+    polysum_factor_list = prime_factors(gcdd(*[output[0].dict[index] for index in output[0].dict]))
     HCF_after_adding = []
     for item in lcm_divisors:
         if item in polysum_factor_list:
             HCF_after_adding.append(item)
             polysum_factor_list.remove(item)
-    #if len(HCF_after_adding) != 0:
-    #    print("HCF_after_adding = ", HCF_after_adding)
     lcm_divisors =  nonintersect_elements(lcm_divisors, HCF_after_adding)
     output[2] = lcm_divisors
     for index in output[0].dict:
@@ -610,20 +446,8 @@ def factorise(*args):
             assert not output[0].dict[index] % np.prod(factor)
             output[0].dict[index] //= factor
 
-    #common_factor = factors_module.gcdd(np.prod(lcm_divisors), *[output[0].dict[index] for index in output[0].dict])
-    # assert np.prod(output[2]) % common_factor == 0
-    # temp = common_factor
-    # for div_ind in range(len(output[2])):
-    #     temp2 = factors_module.gcd(temp, output[2][div_ind])
-    #     output[2][div_ind] //= temp2
-    #     temp //= temp2
-    # assert temp == 1
-    # for index in output[0].dict:
-    #     assert output[0].dict[index] % common_factor == 0
-    #     output[0].dict[index] //= common_factor
 
-
-    # Remove any 1's from the divisors list (should be unnecessary)
+    # Remove any 1's from the divisors list
     items_to_remove = []
     for index in range(len(output[2])):
         if output[2][index] == 1:
@@ -633,7 +457,6 @@ def factorise(*args):
         for index in sorted(items_to_remove, reverse=True):
             del output[2][index]
 
-    #print('output = ', output)
 
     return output
 
