@@ -79,6 +79,15 @@ class Gaussian(RBF):
         self.var = float(variance)  # assign as float to remove 'classic division' compatibility problems
         super().__init__(dimension=dimension)
 
+    def __repr__(self):
+        if self.dim:
+            return 'Gaussian(%d, dimension=%d)' % (self.var, self.dim)
+        else:
+            return 'Gaussian(%d)' % (self.var)
+
+    def __str__(self):
+        return self.__repr__()
+
     def eval(self, x1, x2):
         """
         Ordinary function evaluation
@@ -157,6 +166,16 @@ class Wendland(RBF):
         self.calculation = calculation
         #TODO: Add functionality for exact-normalised, float and scaled
 
+    def __repr__(self):
+        if self.dim:
+            return "Wendland(%d, %d, dimension=%d, c=%f, calculation='%s')" % \
+                   (self.l, self.k, self.dim, self.c, self.calculation)
+        else:
+            return "Wendland(%d, %d, c=%f, calculation='%s')" % \
+                   (self.l, self.k, self.c, self.calculation)
+
+    def __str__(self):
+        return self.__repr__()
 
     def psilk(self):
         """
@@ -250,6 +269,7 @@ class Wendland(RBF):
     def psi2calc(self):
         """
         Helper function for RBF orbital derivative interpolation
+        Returns function with parameters x1 and x2
         :param x1: input vector, 1D numpy array
         :param x2: input vector, 1D numpy array
         :return: (d(psi1)/dr) / r
@@ -297,7 +317,98 @@ class Wendland(RBF):
 
         return psi2eval
 
+    def differentiate(self, n):
+        """
+        Returns a new Wendland kernel object that is the nth derivative of the current Wendland kernel
+        """
+        return Wendland_deriv(self, n)
 
+
+class Wendland_deriv(RBF):
+    """
+    Wendland function kernel derivative
+    """
+    def __init__(self, Wendlandkernel, derivs):
+        """
+        Initialiser for Wendland kernel
+        :param l: Internal parameter. For normal applications, set equal to
+                    floor(d/2) + k + 1
+        :param k: Internal parameter. With above setting for l, kernel has smoothness
+                    C^{2k} and generates the Sobolev RKHS W^\tau_2, with
+                    \tau = k + (d+1)/2
+        :param dimension: Phase space dimension
+        :param c: Positive scaling parameter. Set to 1 by default
+        :param calculation: exact - use only integer arithmetic, representation is exact up until the final
+                                    polynomial evaluation (but produces overflow errors from k=12)
+                            exact-normalised - same as exact, but does not divide by lcm_divisors
+                            float - use floating point arithmetic, end result subject to rounding errors
+                            scaled - produces functions equal to Wendland kernel up to a constant.
+                                    Coefficients are scaled to stay within a suitable range
+        :param derivs: number of derivatives to take
+        :return: None
+        """
+        super().__init__(dimension=Wendlandkernel.dim)
+        self.c = Wendlandkernel.c  # assign as float to remove 'classic division' compatibility problems
+        self.k = Wendlandkernel.k
+        self.l = Wendlandkernel.l
+        self.derivs = derivs
+        self.psilist = Wendlandkernel.psilist     # To store the polynomial in the form [Poly, degree, divisor_list]
+
+        self.poly = None        # Final polynomial representation - equal to self.psilist expanded out (without c scaling)
+
+        self.eval = self.psilk()
+
+        self.calculation = Wendlandkernel.calculation
+        #TODO: Add functionality for exact-normalised, float and scaled
+
+    def __repr__(self):
+        if self.dim:
+            return "Wendland_deriv(%d, %d, dimension=%d, c=%f, calculation='%s', derivs=%d)" % \
+                   (self.l, self.k, self.dim, self.c, self.calculation, self.derivs)
+        else:
+            return "Wendland_deriv(%d, %d, c=%f, calculation='%s', derivs=%d)" % \
+                   (self.l, self.k, self.c, self.calculation, self.derivs)
+
+    def __str__(self):
+        return self.__repr__()
+
+    def psilk(self):
+        """
+        Calculates representation in the form [Poly, degree, divisor_list]
+        :return: Evaluation function
+        """
+        for counter in range(self.derivs):
+            if self.psilist == 0:   # zero polynomial
+                break
+            polytemp = copy.deepcopy(self.psilist[0])
+            polytemp.differentiate()
+            if self.psilist[1] >= 1:
+                self.psilist = factorise([self.c * polytemp, self.psilist[1], self.psilist[2]],
+                                         [-self.psilist[1] * self.c * self.psilist[0], self.psilist[1] - 1, self.psilist[2]])
+            else:
+                if polytemp.degree == 0 and polytemp.dict[0]==0:
+                    self.psilist = 0    # zero polynomial
+                else:
+                    self.psilist = factorise([self.c * polytemp, self.psilist[1], self.psilist[2]])
+
+        if self.psilist != 0:
+            self.poly = poly_triple_to_poly(self.psilist)
+        else:
+            self.poly = Poly(0)
+
+        # Convert self.psilist into a workable function
+        def psilist_eval(x1, x2):
+            #assert x1.ndim == 1 and x2.ndim == 1
+            assert x1.shape[-1] == x2.shape[-1]   # Same phase space dimension
+            assert self.dim == x1.shape[-1]
+            dim_axis = max(x1.ndim, x2.ndim) - 1
+            cr = self.c * np.linalg.norm(x1 - x2, axis=dim_axis)
+            mask = (cr < 1)
+            output = np.zeros(cr.shape)
+            output[mask] = poly_eval(self.poly, cr[mask])
+            return output
+
+        return psilist_eval
 
 """
 K31 = Wendland(3,1,c=0.5)

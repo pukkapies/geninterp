@@ -1,6 +1,7 @@
 from scipy.spatial import distance
 import math
 import numpy as np
+import os
 import scipy.sparse as sparse
 
 def gram_Wendland_MeshData(Int_obj):
@@ -62,8 +63,315 @@ def gram_Wendland_MeshData(Int_obj):
 
     return sparse_gram
 
+###############################################################################################################
 
-def gram_Wendland(Int_obj):
+def complete_gram_Wendland(Int_obj, filepath):
+    """
+    Function completes a previously interrupted build of the Gram matrix using gram_Wendland function.
+    Int_obj needs to have a gramblockdict attribute: a dict with keys equal to block indices,
+    and corresponding values equal to 2D array. Each 2D array might not be complete.
+    :param Int_obj: Interpolation object
+    :param filepath: path to the appropriate '../Gram matrix' folder
+    :return: Gram matrix
+    """
+    len_temp = len(Int_obj.linfunc.gram_functions) # Number of row/column blocks in Gram matrix
+
+    # Check for incomplete blocks
+    list_of_rows = []
+    if len_temp > 0:
+        for i in range(len_temp):
+            row = []
+            for j in range(len_temp):
+                if j == i:
+                    row.append(np.array([0])) # Dummy value, to be replaced in next loop
+                elif j < i:
+                    row.append(list_of_rows[j][i].T)
+                    if True:
+                        gramfileblock_path = filepath + '/Block' + str(i) + '-' + str(j)
+                        if not os.path.exists(gramfileblock_path): os.makedirs(gramfileblock_path)
+                        np.save(gramfileblock_path, list_of_rows[j][i].T)
+                else:
+                    blockpath = filepath + 'Block' + str(i) + '-' + str(j)
+                    if os.path.exists(blockpath):
+                        num_points_in_dataobj_i = Int_obj.data_points[i].numpoints  #Number of rows in block
+                        num_points_in_dataobj_j = Int_obj.data_points[j].numpoints  #Number of cols in block
+                        i_pts = Int_obj.data_points[i].points
+                        j_pts = Int_obj.data_points[j].points
+                        blockcheckflag = 0
+                        for k in range(len(num_points_in_dataobj_i)):
+                            if 'row' + str(k) + '.npy' not in os.listdir(blockpath + '/'):
+                                if not blockcheckflag:  #First time we found a row not in the directory
+                                    print('Completing Gram block (%d,%d) from row %d...' % (i,j,k))
+
+                                    off_diag_block = np.zeros((num_points_in_dataobj_i, num_points_in_dataobj_j))
+                                    rowlisttemp = [np.load(blockpath + '/row' + str(rownumber) + '.npy')
+                                                   for rownumber in range(k)]
+                                    off_diag_block[0:k,:] = np.vstack(rowlisttemp)
+                                    blockcheckflag = 1
+                                for l in range(num_points_in_dataobj_j):
+                                    if Int_obj.K.c * np.linalg.norm(i_pts[k,:] - j_pts[l,:]) >= 1:
+                                        off_diag_block[k,l] = 0
+                                    else:
+                                        off_diag_block[k,l] = Int_obj.linfunc.gram_functions[i][j](i_pts[k,:], j_pts[l,:])
+                                if True:
+                                    gramfileblockrow_path = blockpath + '/'
+                                    if not os.path.exists(gramfileblockrow_path): os.makedirs(gramfileblockrow_path)
+                                    np.save(gramfileblockrow_path + 'row' + str(k), off_diag_block[k,:])
+                            row.append(off_diag_block)
+                    else:       #Block folder doesn't exist yet - so calculate from scratch
+                        num_points_in_dataobj_i = Int_obj.data_points[i].numpoints
+                        num_points_in_dataobj_j = Int_obj.data_points[j].numpoints
+                        i_pts = Int_obj.data_points[i].points
+                        j_pts = Int_obj.data_points[j].points
+                        off_diag_block = np.zeros((num_points_in_dataobj_i, num_points_in_dataobj_j))
+                        for k in range(num_points_in_dataobj_i):
+                            for l in range(num_points_in_dataobj_j):
+                                if Int_obj.K.c * np.linalg.norm(i_pts[k,:] - j_pts[l,:]) >= 1:
+                                    off_diag_block[k,l] = 0
+                                else:
+                                    off_diag_block[k,l] = Int_obj.linfunc.gram_functions[i][j](i_pts[k,:], j_pts[l,:])
+                            if True:
+                                gramfileblockrow_path = filepath + '/Block' + str(i) + '-' + str(j) + '/'
+                                print('gramfileblockrow_path = ', gramfileblockrow_path)
+                                if not os.path.exists(gramfileblockrow_path):
+                                    os.makedirs(gramfileblockrow_path)
+                                np.save(gramfileblockrow_path + 'row' + str(k), off_diag_block[k,:])
+                        row.append(off_diag_block)
+                        if True:
+                            gramfileblock_path = filepath + '/Block' + str(i) + '-' + str(j)
+                            if not os.path.exists(gramfileblock_path): os.makedirs(gramfileblock_path)
+                            np.save(gramfileblock_path, off_diag_block)
+
+            list_of_rows.append(row)
+
+    # Now calculate the diagonal blocks
+    for i in range(len_temp):
+        pts = Int_obj.data_points[i].points
+        num_points_in_dataobj = Int_obj.data_points[i].numpoints
+        blockpath = filepath + '/Block' + str(i) + '-' + str(i)
+        if os.path.exists(blockpath):
+            blockcheckflag = 0
+            for j in range(num_points_in_dataobj):
+                if 'row' + str(j) + '.npy' not in os.listdir(blockpath + '/'):
+                    if not blockcheckflag:  #First time we found a row not in the directory
+                        print('Completing Gram block (%d,%d) from row %d...' % (i,i,j))
+                        diag_block = np.zeros((num_points_in_dataobj,num_points_in_dataobj))
+                        rowlisttemp = [np.load(blockpath + '/row' + str(rownumber) + '.npy')
+                                       for rownumber in range(j)]
+                        diag_block[0:j,:] = np.vstack(rowlisttemp)
+                        blockcheckflag = 1
+                    for k in range(num_points_in_dataobj):
+                        if k < j:
+                            diag_block[j,k] = diag_block[k,j]
+                        elif Int_obj.K.c * np.linalg.norm(pts[j,:] - pts[k,:]) >= 1:
+                            diag_block[j,k] = 0
+                        else:
+                            diag_block[j,k] = Int_obj.linfunc.gram_functions[i][i](pts[j,:], pts[k,:])
+                    if True:
+                        gramfileblockrow_path = filepath + '/Block' + str(i) + '-' + str(i) + '/'
+                        if not os.path.exists(gramfileblockrow_path): os.makedirs(gramfileblockrow_path)
+                        np.save(gramfileblockrow_path +'row' +str(j), diag_block[j,:])
+            list_of_rows[i][i] = diag_block
+            if True:
+                gramfileblock_path = filepath + '/Block' + str(i) + '-' + str(i)
+                if not os.path.exists(gramfileblock_path): os.makedirs(gramfileblock_path)
+                np.save(gramfileblock_path, list_of_rows[i][i])
+        else:   # Block folder doesn't exist yet
+            pts = Int_obj.data_points[i].points
+            num_points_in_dataobj = Int_obj.data_points[i].numpoints
+            diag_block = np.zeros((num_points_in_dataobj,num_points_in_dataobj))
+            for j in range(num_points_in_dataobj):
+                for k in range(num_points_in_dataobj):
+                    if k < j:
+                        diag_block[j,k] = diag_block[k,j]
+                    elif Int_obj.K.c * np.linalg.norm(pts[j,:] - pts[k,:]) >= 1:
+                        diag_block[j,k] = 0
+                    else:
+                        diag_block[j,k] = Int_obj.linfunc.gram_functions[i][i](pts[j,:], pts[k,:])
+                if True:
+                    gramfileblockrow_path = filepath + '/Block' + str(i) + '-' + str(i) + '/'
+                    if not os.path.exists(gramfileblockrow_path): os.makedirs(gramfileblockrow_path)
+                    np.save(gramfileblockrow_path +'row' +str(j), diag_block[j,:])
+            list_of_rows[i][i] = diag_block
+            if True:
+                gramfileblock_path = filepath + '/Block' + str(i) + '-' + str(i)
+                if not os.path.exists(gramfileblock_path): os.makedirs(gramfileblock_path)
+                np.save(gramfileblock_path, list_of_rows[i][i])
+
+    return np.vstack([np.hstack(list) for list in list_of_rows])
+
+###############################################################################################################
+
+def gram_Wendland_sparse(Int_obj, filepath):
+    """
+    Function computes and stores a sparse representation of the Gram matrix. The data for each row is stored,
+    along with the row indices where the data appears. Upon completion the indexptr list is constructed and the
+    sparse csr matrix is returned.
+    Also completes a previously interrupted build.
+    Int_obj needs to have a gramblockdict attribute: a dict with keys equal to block indices,
+    and corresponding values equal to 2D array. Each 2D array might not be complete.
+    :param Int_obj: Interpolation object
+    :param filepath: full path to the appropriate '../Gram matrix' folder
+    :return: Gram matrix
+    """
+    len_temp = len(Int_obj.linfunc.gram_functions) # Number of row/column blocks in Gram matrix
+
+
+    for i in range(len_temp):
+        for j in range(len_temp):
+            blockpath = filepath + '/Block' + str(i) + '-' + str(j) + '/'
+            blockpathexists = 0
+            if os.path.exists(blockpath):
+                blockpathexists = 1
+            elif j >= i:
+                os.mkdir(blockpath)
+                #blockpathexists = 1
+            # Now calculate blocks - start with diagonal blocks
+            if j == i:  #Construct coo matrix. Save row indices for upper triangular part (including diagonal)
+                num_points_in_dataobj = Int_obj.data_points[i].numpoints
+                pts = Int_obj.data_points[i].points
+                blockcheckflag = 0
+                for k in range(num_points_in_dataobj):
+                    rowindices = np.array([], dtype=np.uint16)   # to store row indices of data (upper triangular only)
+                    rowdata = np.array([])      # to store values of nonzero row elements (upper triangular part only)
+                    if True: #blockpathexists # check which rows have been completed
+                        if ('row' + str(k) + 'data.npy' not in os.listdir(blockpath)) or \
+                                ('row' + str(k) + 'indices.npy' not in os.listdir(blockpath)):
+                            # This row wasn't completed - either data file or row index file is incomplete
+                            if (not blockcheckflag) and blockpathexists: #First time we found a row not in the directory
+                                print('Completing Gram block (%d,%d) from row %d...' % (i,j,k))
+                                blockcheckflag = 1
+                            for l in range(k, num_points_in_dataobj):   # start from the diagonal element
+                                if Int_obj.K.c * np.linalg.norm(pts[k,:] - pts[l,:]) < 1:
+                                    rowindices = np.append(rowindices, l)
+                                    rowdata = np.append(rowdata, Int_obj.linfunc.gram_functions[i][j](pts[k,:],
+                                                                                                      pts[l,:]))
+                            if True:
+                                np.save(blockpath + 'row' + str(k) + 'data', rowdata)
+                                np.save(blockpath + 'row' + str(k) + 'indices', rowindices)
+                    """
+                    # For some reason the code is a lot faster when it always executes the previous block
+                    else:       # Block folder doesn't exist yet - no need to check for completed rows
+                        for l in range(k, num_points_in_dataobj):
+                            if Int_obj.K.c * np.linalg.norm(pts[k,:] - pts[l,:]) < 1:
+                                rowindices = np.append(rowindices, l)
+                                rowdata = np.append(rowdata, Int_obj.linfunc.gram_functions[i][j](pts[k,:],
+                                                                                                  pts[l,:]))
+                            if True:
+                                np.save(blockpath + 'row' + str(k) + 'data', rowdata)
+                                np.save(blockpath + 'row' + str(k) + 'indices', rowindices)
+                    """
+
+            elif j > i:   # construct upper diagonal blocks as csr matrices
+                num_points_in_dataobj_i = Int_obj.data_points[i].numpoints  #Number of rows in block
+                num_points_in_dataobj_j = Int_obj.data_points[j].numpoints  #Number of cols in block
+                i_pts = Int_obj.data_points[i].points
+                j_pts = Int_obj.data_points[j].points
+                blockcheckflag = 0
+                for k in range(num_points_in_dataobj_i):
+                    rowindices = np.array([], dtype=np.uint16)   # to store row indices of data
+                    rowdata = np.array([])      # to store values of nonzero row elements
+                    if blockpathexists: # check which rows have been completed
+                        if ('row' + str(k) + 'data.npy' not in os.listdir(blockpath)) or \
+                                ('row' + str(k) + 'indices.npy' not in os.listdir(blockpath)):
+                            # This row wasn't completed - either data file or row index file is incomplete
+                            if not blockcheckflag:  #First time we found a row not in the directory
+                                print('Completing Gram block (%d,%d) from row %d...' % (i,j,k))
+                                blockcheckflag = 1
+                            for l in range(num_points_in_dataobj_j):
+                                if Int_obj.K.c * np.linalg.norm(i_pts[k,:] - j_pts[l,:]) < 1:
+                                    rowindices = np.append(rowindices, l)
+                                    rowdata = np.append(rowdata, Int_obj.linfunc.gram_functions[i][j](i_pts[k,:],
+                                                                                                      j_pts[l,:]))
+                            if True:
+                                np.save(blockpath + 'row' + str(k) + 'data', rowdata)
+                                np.save(blockpath + 'row' + str(k) + 'indices', rowindices)
+                    else:       # Block folder doesn't exist yet - no need to check for completed rows
+                        for l in range(num_points_in_dataobj_j):
+                            if Int_obj.K.c * np.linalg.norm(i_pts[k,:] - j_pts[l,:]) < 1:
+                                rowindices = np.append(rowindices, l)
+                                rowdata = np.append(rowdata, Int_obj.linfunc.gram_functions[i][j](i_pts[k,:],
+                                                                                                  j_pts[l,:]))
+                            if True:
+                                np.save(blockpath + 'row' + str(k) + 'data', rowdata)
+                                np.save(blockpath + 'row' + str(k) + 'indices', rowindices)
+
+    return build_sparse_matrix(Int_obj, filepath)
+
+###########################################################################################################
+
+def build_sparse_matrix(Int_obj, filepath):
+    """
+    Returns the sparse Gram matrix after all rows/indices have been calculated
+    :param Int_obj: Interpolation object
+    :param filepath: filepath to retrieve data
+    :return: sparse Gram matrix
+    """
+    len_temp = len(Int_obj.linfunc.gram_functions) # Number of row/column blocks in Gram matrix
+
+    for i in range(len_temp):
+        for j in range(len_temp):
+            blockpath = filepath + '/Block' + str(i) + '-' + str(j) + '/'
+            if j==i:    # Build coo matrix
+                rows = np.array([],dtype=np.uint16)
+                cols = np.array([],dtype=np.uint16)
+                data = np.array([])
+                num_points_in_dataobj = Int_obj.data_points[i].numpoints
+                for k in range(num_points_in_dataobj):
+                    readrowdata = np.load(blockpath + 'row' + str(k) + 'data.npy')
+                    readrowindices = np.load(blockpath + 'row' + str(k) + 'indices.npy')
+                    cols = np.append(cols, readrowindices)
+                    rows = np.append(rows, k*np.ones((len(readrowindices),),dtype=np.uint16))
+                    data = np.append(data, readrowdata)
+                    assert readrowindices[0]==k # First element should be (nonzero) diagonal element
+                    rows = np.append(rows, readrowindices[1:])    # Don't include diagonal element
+                    cols = np.append(cols, k*np.ones((len(readrowindices)-1,),dtype=np.uint16))
+                    data = np.append(data, readrowdata[1:])
+
+                save_sparse_csr(filepath + '/Block' + str(i) + '-' + str(i), sparse.coo_matrix((data, (rows,cols)),
+                                                   shape=(num_points_in_dataobj,num_points_in_dataobj)).tocsr())
+
+            elif j > i:
+                rowindices = np.array([], dtype=np.uint16)
+                rowindptr = np.array([0], dtype=np.uint16)
+                data = np.array([])
+                num_points_in_dataobj_i = Int_obj.data_points[i].numpoints  #Number of rows in block
+                num_points_in_dataobj_j = Int_obj.data_points[j].numpoints  #Number of cols in block
+                for k in range(num_points_in_dataobj_i):
+                    readrowdata = np.load(blockpath + 'row' + str(k) + 'data.npy')
+                    readrowindices = np.load(blockpath + 'row' + str(k) + 'indices.npy')
+
+                    rowindptr = np.append(rowindptr, np.array([rowindptr[-1] + len(readrowindices)],dtype=np.uint16))
+                    rowindices = np.append(rowindices, readrowindices)
+                    data = np.append(data, readrowdata)
+
+                save_sparse_csr(filepath + '/Block' + str(i) + '-' + str(j),
+                                sparse.csr_matrix((data, rowindices, rowindptr),
+                                                  shape=(num_points_in_dataobj_i, num_points_in_dataobj_j)))
+                save_sparse_csr(filepath + '/Block' + str(j) + '-' + str(i),
+                                sparse.csr_matrix((data, rowindices, rowindptr),
+                                                  shape=(num_points_in_dataobj_i, num_points_in_dataobj_j)).T)
+
+        return sparse.vstack([sparse.hstack([load_sparse_csr(filepath + '/Block' + str(i) + '-' + str(j) + '.npz')
+                                             for j in range(len_temp)]) for i in range(len_temp)])
+
+def save_sparse_csr(filename,array):
+    np.savez(filename, data = array.data , indices=array.indices, indptr =array.indptr, shape=array.shape )
+
+def load_sparse_csr(filename):
+    loader = np.load(filename)
+    return sparse.csr_matrix((loader['data'], loader['indices'], loader['indptr']), shape = loader['shape'])
+
+def save_sparse_coo(filename,array):
+    np.savez(filename, data = array.data , row=array.row, col =array.col, shape=array.shape )
+
+def load_sparse_coo(filename):
+    loader = np.load(filename)
+    return sparse.coo_matrix((loader['data'], (loader['row'], loader['col'])), shape = loader['shape'])
+
+##############################################################################################################
+
+def gram_Wendland(Int_obj, save_rows=[False, None]):
     """
     Function uses compact support of Wendland function to create the Gram matrix from the
     Int_obj.linfunc and Int_obj.data_points attributes
@@ -71,10 +379,14 @@ def gram_Wendland(Int_obj):
     Int_obj.K.c * np.linalg.norm(i_pts[k,:] - j_pts[l,:]) >= 1
     No vectorisation
     :param Int_obj: Interpolation object
+    :param save_rows: Option to save Gram matrix block-by-block, row-by-row. 2nd list element is path
     :return: Gram matrix
     """
     # Use compact support to speed up Gram matrix population
     len_temp = len(Int_obj.linfunc.gram_functions) # Number of row/column blocks in Gram matrix
+
+    if save_rows[0]:
+        gramfile_path = save_rows[1] + '/Gram matrix'
 
     # Using a for loop over the off-diagonal blocks of the Gram matrix, using the symmetry of the matrix
     # Then calculate the diagonal blocks, again using symmetry
@@ -87,6 +399,10 @@ def gram_Wendland(Int_obj):
                     row.append(np.array([0])) # Dummy value, to be replaced in next loop
                 elif j < i:
                     row.append(list_of_rows[j][i].T)
+                    if save_rows[0]==True:
+                        gramfileblock_path = gramfile_path + '/Block' + str(i) + '-' + str(j)
+                        if not os.path.exists(gramfileblock_path): os.makedirs(gramfileblock_path)
+                        np.save(gramfileblock_path, list_of_rows[j][i].T)
                 else:
                     num_points_in_dataobj_i = Int_obj.data_points[i].numpoints
                     num_points_in_dataobj_j = Int_obj.data_points[j].numpoints
@@ -99,7 +415,15 @@ def gram_Wendland(Int_obj):
                                 off_diag_block[k,l] = 0
                             else:
                                 off_diag_block[k,l] = Int_obj.linfunc.gram_functions[i][j](i_pts[k,:], j_pts[l,:])
+                        if save_rows[0]==True:
+                            gramfileblockrow_path = gramfile_path + '/Block' + str(i) + '-' + str(j) + '/'
+                            if not os.path.exists(gramfileblockrow_path): os.makedirs(gramfileblockrow_path)
+                            np.save(gramfileblockrow_path + 'row' + str(k), off_diag_block[k,:])
                     row.append(off_diag_block)
+                    if save_rows[0]==True:
+                        gramfileblock_path = gramfile_path + '/Block' + str(i) + '-' + str(j)
+                        if not os.path.exists(gramfileblock_path): os.makedirs(gramfileblock_path)
+                        np.save(gramfileblock_path, off_diag_block)
 
             list_of_rows.append(row)
     # Now calculate the diagonal blocks
@@ -115,7 +439,15 @@ def gram_Wendland(Int_obj):
                     diag_block[j,k] = 0
                 else:
                     diag_block[j,k] = Int_obj.linfunc.gram_functions[i][i](pts[j,:], pts[k,:])
+            if save_rows[0]==True:
+                gramfileblockrow_path = gramfile_path + '/Block' + str(i) + '-' + str(i) + '/'
+                if not os.path.exists(gramfileblockrow_path): os.makedirs(gramfileblockrow_path)
+                np.save(gramfileblockrow_path +'row' +str(j), diag_block[j,:])
         list_of_rows[i][i] = diag_block
+        if save_rows[0]==True:
+            gramfileblock_path = gramfile_path + '/Block' + str(i) + '-' + str(i)
+            if not os.path.exists(gramfileblock_path): os.makedirs(gramfileblock_path)
+            np.save(gramfileblock_path, list_of_rows[i][i])
     return np.vstack([np.hstack(list) for list in list_of_rows])
 
 

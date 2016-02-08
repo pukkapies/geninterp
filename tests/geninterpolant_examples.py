@@ -53,22 +53,26 @@ testpts_derivs = Data()
 testpts_derivs.set_data(np.array([[1], [2.5]]))
 testpts_derivs.set_targets(np.array([0, 0]))
 
-inter_orbderiv = OrbDerivInterpolant([testpts_derivs,testpts], K, f)
-inter_orbderiv.solve_linear_system()
+for p, i in enumerate([0,1,5]):
 
-def s_orbderiv(x): return inter_orbderiv.eval(x)
+    inter_orbderiv = OrbDerivInterpolant([testpts_derivs,testpts], K, f)
+    inter_orbderiv.solve_linear_system(regularisation=i)
 
-
-print('++++++')
-print(s_orbderiv(np.array([[0]])))
-print(s_orbderiv(np.array([[1]])))
-print(s_orbderiv(np.array([[2]])))
-print(s_orbderiv(np.array([[3]])))
+    def s_orbderiv(x): return inter_orbderiv.eval(x)
 
 
-plt.figure()
-xrange = np.linspace(-1, 5, 100).reshape(100,1)
-plt.plot(xrange.reshape(100,), s_orbderiv(xrange))
+    print('++++++')
+    print(s_orbderiv(np.array([[0]])))
+    print(s_orbderiv(np.array([[1]])))
+    print(s_orbderiv(np.array([[2]])))
+    print(s_orbderiv(np.array([[3]])))
+
+    plt.subplot(3,1,p+1)
+    #plt.figure()
+    xrange = np.linspace(-1, 5, 100).reshape(100,1)
+    plt.plot(xrange.reshape(100,), s_orbderiv(xrange))
+    plt.title('Regularisation = %s' % i)
+
 plt.show()
 
 

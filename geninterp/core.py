@@ -186,6 +186,7 @@ class Interpolant(object):
         assert isinstance(K, Kernel)
         self.K = K
         self.K.dim = self.dim
+        self.write_Gram_to_file = False #option to save Gram matrix
         self.regularisation = 0     #regularisation parameter
         self.gram = None    # Interpolation (Gramian) matrix to be constructed from linearfunctional
         self.beta = np.array([]) # 1D np.array to contain target values contained in data_list
@@ -202,7 +203,7 @@ class Interpolant(object):
         self._check_for_empty_Data()
         start = time.time()
         print('making sparse gram')
-        self.sparse_gram = sparse.csr_matrix(gram_Wendland_MeshData(self))
+        self.sparse_gram = gram_Wendland_sparse(self, self.io.dir + '/Gram matrix')  #only for COPAN Interpolant objects
         print('finished sparse gram')
         end_sparse = time.time()
         print('making Gram with gram() function')
@@ -220,23 +221,33 @@ class Interpolant(object):
 
         print('type(self.sparse_gram) = ', type(self.sparse_gram))
 
-        print('Difference in norm: ', np.linalg.norm(self.gram - self.sparse_gram.toarray()))
+        print('Difference in norm between gram and sparse_gram: ',
+              np.linalg.norm(self.gram - self.sparse_gram.toarray()))
+
+        print('Difference in norm between gram_Wendland and sparse_gram: ',
+              np.linalg.norm(self.gram_Wendland - self.sparse_gram.toarray()))
 
         for data_object in self.data_points:
             #self.dim = data_object.points.shape[0]
             self.beta = np.hstack((self.beta, data_object.targets))
 
-        self.coefficients = np.linalg.solve(self.gram, self.beta)
+        self.coefficients = np.linalg.solve(self.gram_Wendland, self.beta)
         self.coefficients2 = spsolve(self.sparse_gram, self.beta)
 
-    def solve_linear_system(self, A=None, use_Wendland_compsupp=True, regularisation=None):
+        print('Difference in coeffs between gram_Wendland and sparse_gram: ', np.linalg.norm(self.coefficients -
+                                                                                             self.coefficients2))
+
+    def solve_linear_system(self, A=None, use_Wendland_compsupp=True, regularisation=None, save_Gram_rows=[False,None]):
         """
         Solves the linear system defined by generalised interpolation problem
         :param A: Interpolation matrix
         :param use_Wendland_compsupp: When A is not given and the kernel is Wendland kernel, use the
         compact support to speed up population of interpolation matrix.
+        :param save_Gram_rows: Option to save Gram matrix row-by-row - 2nd list element is for path
+                            (currently only for gram_Wendland())
         :return: solution vector stored in self.coefficients
         """
+        #TODO: Implement save_Gram_rows for other gram functions
         if regularisation!=None:
             self.regularisation=regularisation
 
@@ -255,23 +266,25 @@ class Interpolant(object):
                 self.gram = gram(self)
             else:
                 print('using gram_Wendland')
-                self.gram = gram_Wendland(self)
+                self.gram = gram_Wendland(self, save_rows=save_Gram_rows)
             print('finished making Gram matrix')
         else:
             self._check_gram(A)
             self.gram = A
-        if self.regularisation != 0:
-            self.gram = self.gram + (self.regularisation * sparse.identity(self.gram.shape[0]))
+        #if self.regularisation != 0:
+        #    print('Adding regularisation: ', self.regularisation)
+        #    self.gram = self.gram + (self.regularisation * sparse.identity(self.gram.shape[0]))
         print('solving linear system')
+        self.beta = np.array([])
         for data_object in self.data_points:
             #self.dim = data_object.points.shape[0]
             self.beta = np.hstack((self.beta, data_object.targets))
         if sparse.issparse(self.gram):
             if not isinstance(self.gram, sparse.csr.csr_matrix):
                 self.gram = sparse.csr_matrix(self.gram)
-            self.coefficients = spsolve(self.gram, self.beta)
+            self.coefficients = spsolve(self.gram + (self.regularisation * sparse.identity(self.gram.shape[0])), self.beta)
         else:
-            self.coefficients = np.linalg.solve(self.gram, self.beta)
+            self.coefficients = np.linalg.solve(self.gram + (self.regularisation * sparse.identity(self.gram.shape[0])), self.beta)
         print('finished linear system')
 
     def eval(self, y):
@@ -403,6 +416,7 @@ class OrbDerivInterpolant(Interpolant):
             print("WARNING: Basis and gram functions need to be set for OrbDerivInterpolant.linearfunctional")
         super().__init__(linfunc, data_list, K)
         self.f = f
+        """
         # attributes for function value interpolation
         self.val_points = np.array([])
         self.num_val_points = 0
@@ -411,6 +425,7 @@ class OrbDerivInterpolant(Interpolant):
         self.orb_deriv_points = np.array([])
         self.num_orb_deriv_points = 0
         self.orb_deriv_targets = np.array([])
+        """
 
     def _gram(self):
 
