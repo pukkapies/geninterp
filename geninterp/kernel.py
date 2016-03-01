@@ -382,14 +382,16 @@ class Wendland_deriv(RBF):
                 break
             polytemp = copy.deepcopy(self.psilist[0])
             polytemp.differentiate()
-            if self.psilist[1] >= 1:
-                self.psilist = factorise([self.c * polytemp, self.psilist[1], self.psilist[2]],
-                                         [-self.psilist[1] * self.c * self.psilist[0], self.psilist[1] - 1, self.psilist[2]])
+            if self.psilist[1] >= 1:    # Degenerate polynomial part has degree at least 1
+                self.psilist = factorise([polytemp, self.psilist[1], self.psilist[2]],
+                                         [-self.psilist[1] * self.psilist[0], self.psilist[1] - 1, self.psilist[2]])
             else:
                 if polytemp.degree == 0 and polytemp.dict[0]==0:
                     self.psilist = 0    # zero polynomial
                 else:
-                    self.psilist = factorise([self.c * polytemp, self.psilist[1], self.psilist[2]])
+                    self.psilist = factorise([polytemp, self.psilist[1], self.psilist[2]])
+
+        self.psilist[0] = (self.c**self.derivs) * self.psilist[0]
 
         if self.psilist != 0:
             self.poly = poly_triple_to_poly(self.psilist)
@@ -398,14 +400,40 @@ class Wendland_deriv(RBF):
 
         # Convert self.psilist into a workable function
         def psilist_eval(x1, x2):
-            #assert x1.ndim == 1 and x2.ndim == 1
+            if self.dim != 1:
+                print("Wendland_deriv: Evaluation function for dimensions higher than one is not yet implemented!")
+                exit(1)
+            #TODO: Implement this - for n derivatives and d dimensions the output should be a (n+1)-dimensional
+            #TODO: array, where all but the first dimension have length d. First dimension is equal to number of input
+            #TODO: points. Assume that the derivative is being taken with respect to the second input argument
             assert x1.shape[-1] == x2.shape[-1]   # Same phase space dimension
             assert self.dim == x1.shape[-1]
             dim_axis = max(x1.ndim, x2.ndim) - 1
-            cr = self.c * np.linalg.norm(x1 - x2, axis=dim_axis)
+            r = np.linalg.norm(x1 - x2, axis=dim_axis)
+            cr = self.c * r
             mask = (cr < 1)
             output = np.zeros(cr.shape)
             output[mask] = poly_eval(self.poly, cr[mask])
+
+            dr = np.sign(x2-x1)
+            dr[dr==0] = 1   # These elements will be multiplied by zero for odd derivatives anyway
+            dr = dr**self.derivs
+            """
+            r_inv = np.zeros(r.shape)
+            mr = np.ma.array(r, mask=(r==0))
+            r_inv[r!=0] = 1./(mr[~mr.mask])
+            r_inv = np.expand_dims(r_inv, r_inv.ndim)   # reciprocal of r, leaving zero values at zero
+
+            output = np.expand_dims(output, output.ndim)
+            output = np.repeat(output, self.dim, axis=output.ndim - 1)
+            output = output * r_inv * (x1 - x2)
+            """
+            output = np.expand_dims(output, output.ndim)
+            output = output * dr
+
+            assert output.shape[-1]==1  # Only for phase space dimension = 1, this will change for other dimensions
+            output = output.squeeze(axis=(output.ndim - 1))
+
             return output
 
         return psilist_eval

@@ -202,7 +202,7 @@ def complete_gram_Wendland(Int_obj, filepath):
 
 ###############################################################################################################
 
-def gram_Wendland_sparse(Int_obj, filepath):
+def gram_Wendland_sparse(Int_obj, filepath, last_saved_row=(0,0,0)):
     """
     Function computes and stores a sparse representation of the Gram matrix. The data for each row is stored,
     along with the row indices where the data appears. Upon completion the indexptr list is constructed and the
@@ -212,17 +212,22 @@ def gram_Wendland_sparse(Int_obj, filepath):
     and corresponding values equal to 2D array. Each 2D array might not be complete.
     :param Int_obj: Interpolation object
     :param filepath: full path to the appropriate '../Gram matrix' folder
+    :param last_saved_row: Option to provide (Block_i, Block_j, lastsavedrow) number, to save the function from
+            searching through all the saved rows in the folder
     :return: Gram matrix
     """
     len_temp = len(Int_obj.linfunc.gram_functions) # Number of row/column blocks in Gram matrix
 
-
-    for i in range(len_temp):
-        for j in range(len_temp):
+    block_i = last_saved_row[0]
+    block_j = last_saved_row[1]
+    lastrow = last_saved_row[2]
+    for i in range(block_i, len_temp):
+        for j in range(block_j, len_temp):
             blockpath = filepath + '/Block' + str(i) + '-' + str(j) + '/'
             blockpathexists = 0
             if os.path.exists(blockpath):
                 blockpathexists = 1
+                print('Found existing Data directory. Looking for last computed row...')
             elif j >= i:
                 os.mkdir(blockpath)
                 #blockpathexists = 1
@@ -231,7 +236,7 @@ def gram_Wendland_sparse(Int_obj, filepath):
                 num_points_in_dataobj = Int_obj.data_points[i].numpoints
                 pts = Int_obj.data_points[i].points
                 blockcheckflag = 0
-                for k in range(num_points_in_dataobj):
+                for k in range(lastrow, num_points_in_dataobj):
                     rowindices = np.array([], dtype=np.uint16)   # to store row indices of data (upper triangular only)
                     rowdata = np.array([])      # to store values of nonzero row elements (upper triangular part only)
                     if True: #blockpathexists # check which rows have been completed
@@ -261,6 +266,7 @@ def gram_Wendland_sparse(Int_obj, filepath):
                                 np.save(blockpath + 'row' + str(k) + 'data', rowdata)
                                 np.save(blockpath + 'row' + str(k) + 'indices', rowindices)
                     """
+                lastrow=0
 
             elif j > i:   # construct upper diagonal blocks as csr matrices
                 num_points_in_dataobj_i = Int_obj.data_points[i].numpoints  #Number of rows in block
@@ -268,7 +274,7 @@ def gram_Wendland_sparse(Int_obj, filepath):
                 i_pts = Int_obj.data_points[i].points
                 j_pts = Int_obj.data_points[j].points
                 blockcheckflag = 0
-                for k in range(num_points_in_dataobj_i):
+                for k in range(lastrow, num_points_in_dataobj_i):
                     rowindices = np.array([], dtype=np.uint16)   # to store row indices of data
                     rowdata = np.array([])      # to store values of nonzero row elements
                     if blockpathexists: # check which rows have been completed
@@ -295,6 +301,7 @@ def gram_Wendland_sparse(Int_obj, filepath):
                             if True:
                                 np.save(blockpath + 'row' + str(k) + 'data', rowdata)
                                 np.save(blockpath + 'row' + str(k) + 'indices', rowindices)
+                lastrow=0
 
     return build_sparse_matrix(Int_obj, filepath)
 
@@ -307,6 +314,8 @@ def build_sparse_matrix(Int_obj, filepath):
     :param filepath: filepath to retrieve data
     :return: sparse Gram matrix
     """
+    print('Building sparse matrix...')
+
     len_temp = len(Int_obj.linfunc.gram_functions) # Number of row/column blocks in Gram matrix
 
     for i in range(len_temp):
