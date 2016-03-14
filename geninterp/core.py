@@ -4,7 +4,7 @@ from .kernel import *
 from .build_matrix import *
 import scipy.sparse as sparse
 from scipy.sparse.linalg.dsolve import spsolve
-import inspect, time
+import inspect, time, sys
 
 # For printing out numpy arrays without line breaks
 np.set_printoptions(linewidth=np.nan)
@@ -172,7 +172,7 @@ class Interpolant(object):
                 if self.dim == None:    # Dimension not yet initialised
                     self.dim = data_obj.dim
                 if data_obj.dim != self.dim:
-                    print("ERROR initialising Interpolant - data objects have different dimension")
+                    print("ERROR initialising Interpolant - data objects have different dimension", file=sys.stderr)
                     exit(1)
         self.data_points = data_list   # List of Data objects, one object for each different basis
         self.coefficients = None # 1D np.array containing coefficients in function expansion
@@ -237,7 +237,8 @@ class Interpolant(object):
         print('Difference in coeffs between gram_Wendland and sparse_gram: ', np.linalg.norm(self.coefficients -
                                                                                              self.coefficients2))
 
-    def solve_linear_system(self, A=None, use_Wendland_compsupp=True, regularisation=None, save_Gram_rows=[False,None]):
+    def solve_linear_system(self, A=None, use_Wendland_compsupp=True, regularisation=None, save_Gram_rows=[False,None],
+                            verbose=False):
         """
         Solves the linear system defined by generalised interpolation problem
         :param A: Interpolation matrix
@@ -260,21 +261,21 @@ class Interpolant(object):
             exit(1)
         self._check_for_empty_Data()
         if A==None:
-            print('making Gram matrix')
+            if verbose: print('making Gram matrix')
             if use_Wendland_compsupp==False or not isinstance(self.K, Wendland):
-                print('using gram')
+                if verbose: print('using gram')
                 self.gram = gram(self)
             else:
-                print('using gram_Wendland')
+                if verbose: print('using gram_Wendland')
                 self.gram = gram_Wendland(self, save_rows=save_Gram_rows)
-            print('finished making Gram matrix')
+            if verbose: print('finished making Gram matrix')
         else:
             self._check_gram(A)
             self.gram = A
         #if self.regularisation != 0:
         #    print('Adding regularisation: ', self.regularisation)
         #    self.gram = self.gram + (self.regularisation * sparse.identity(self.gram.shape[0]))
-        print('solving linear system')
+        if verbose: print('solving linear system')
         self.beta = np.array([])
         for data_object in self.data_points:
             #self.dim = data_object.points.shape[0]
@@ -285,7 +286,7 @@ class Interpolant(object):
             self.coefficients = spsolve(self.gram + (self.regularisation * sparse.identity(self.gram.shape[0])), self.beta)
         else:
             self.coefficients = np.linalg.solve(self.gram + (self.regularisation * sparse.identity(self.gram.shape[0])), self.beta)
-        print('finished linear system')
+        if verbose: print('finished linear system')
 
     def eval(self, y):
         """
